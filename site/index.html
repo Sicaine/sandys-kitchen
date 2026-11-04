@@ -242,13 +242,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         </button>
         <div class="pop left" id="menu" hidden>
           <h4>Scenes</h4>
-          <button class="row" data-scene="bakery">Home bakery <small>mixer, cake tin, oven</small></button>
+          <button class="row" data-scene="bakery">Home bakery <small>endless cake loop</small></button>
           <button class="row" data-scene="factory">Cookie factory <small>roll, cut, bake, ice</small></button>
           <button class="row" data-scene="stove">Candy stove <small>pot, tray, cooling plate</small></button>
           <button class="row" data-scene="counter">Empty counter <small>build your own</small></button>
           <div class="sep"></div>
           <button class="row" id="clearBtn">Clear ingredients <small>keeps machines</small></button>
           <button class="row" id="inspBtn">Labels &amp; inspector <small id="inspState">on</small></button>
+          <button class="row" id="fitBtn">Fit kitchen to window <small>restarts the scene</small></button>
           <button class="row" id="keysBtn">Controls <small>mouse &amp; keys</small></button>
         </div>
       </div>
@@ -259,6 +260,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <div class="hseg" id="speedSeg" role="group" aria-label="Simulation speed">
         <button data-speed="0.5">½×</button><button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
       </div>
+      <button class="hb" id="fsBtn" title="Fullscreen (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="lbl">Fullscreen</span></button>
       <button class="hb" id="heatBtn" title="Heat view (H)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 11v6"/></svg><span class="lbl">Heat view</span></button>
       <button class="hb" id="progBtn" title="Step program (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="4" height="4" rx="1"/><rect x="10" y="5" width="4" height="4" rx="1"/><rect x="17" y="5" width="4" height="4" rx="1"/><path d="M3 15h18M3 19h12"/></svg><span class="lbl">Program</span></button>
       <div style="position:relative">
@@ -282,7 +284,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         <p>Everything here is tiny grains with a temperature. Recipes are real ratios: mix the right amounts and the bowl tells you what you made, or what's missing.</p>
         <ol>
           <li>Press <b>Run</b> in the program under the kitchen. Four dispensers weigh out flour, sugar, egg and butter, the mixer makes cake batter, and it drains into the tin.</li>
-          <li>The belt carries the tin to the oven. The oven is on <b>Auto bake</b>: it opens, pulls the tin in, shuts, bakes 20 s and sends the cake out the other side onto a cooling belt.</li>
+          <li>The belt carries the tin to the oven. On <b>Auto bake</b> it opens, pulls the tin in, shuts, bakes and sends the cake out the other side into the packing crate. With <b>Loop</b> on, a new tin is dropped and it all runs forever.</li>
           <li>Bake until golden. <b>Heat view</b> shows the heat reaching the middle.</li>
         </ol>
         <p>Click any machine with the Hand to change it: ingredient, grams, color, speed.</p>
@@ -302,7 +304,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           <kbd>Shift + drag</kbd><span>Move a pan with any tool selected</span>
           <kbd>1 – 9</kbd><span>Pick from the visible list</span>
           <kbd>E S W T C Q</kbd><span>Erase, Spatula, Whisk, Torch, Chill, Hand</span>
-          <kbd>Space · H · P · B</kbd><span>Pause · Heat view · Program · Recipe book</span>
+          <kbd>Space · H · P · B · F</kbd><span>Pause · Heat view · Program · Recipe book · Fullscreen</span>
           <kbd>[ ]</kbd><span>Smaller or bigger brush</span>
         </div>
         <button class="btn" data-close="keys">Got it</button>
@@ -368,8 +370,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
    - Machines (dispensers, bowls, ovens, belts, gates, scales, pans) are
      objects that own their cells. A step program drives them in takts.
    ===================================================================== */
-const W = 320, H = 232, N = W * H, AMB = 22;
-const FY = H - 10; // first counter row
+const AMB = 22;
+// The kitchen is always 232 cells tall; its width grows to fit the window (320–480 cells).
+// Scenes are laid out 320 wide and centred with XO.
+let W = 320, H = 232, N = W * H, FY = H - 10, XO = 0; // FY: first counter row
 const rnd = Math.random;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -405,6 +409,8 @@ const COPPER = mk('Copper fitting', ST_STATIC, '#c77a4a', { k: 0.4, v: .08 });
 const OVENDOOR = mk('Oven door', ST_STATIC, '#36424f', { k: 0.01, v: .02 });
 const GATEM = mk('Gate', ST_STATIC, '#8a939d', { k: 0.3, v: 0 });
 const SCALEM = mk('Scale', ST_STATIC, '#dcdfe3', { k: 0.2, v: 0 });
+const FEEDERM = mk('Tin feeder', ST_STATIC, '#7f8a96', { k: 0.3, v: 0 });
+const CRATE = mk('Packing crate', ST_STATIC, '#a8763f', { k: 0.02, v: .06 });
 // powders
 const FLOUR = mk('Flour', ST_POWDER, '#f2ebdd', { d: 1.4, k: .05, slide: .5, tint: 1, v: .03 });
 const SUGAR = mk('Sugar', ST_POWDER, '#fbfaf5', { d: 1.6, k: .08, slide: .9, tint: 1, v: .04 });
@@ -485,11 +491,18 @@ const DESC = {
 };
 
 /* ---------------- grid state ---------------- */
-const mat = new Uint8Array(N), temp = new Float32Array(N).fill(AMB), prog = new Float32Array(N), tint = new Uint32Array(N),
-  shade = new Uint8Array(N), aux = new Uint8Array(N), clk = new Uint8Array(N), wmask = new Uint8Array(N),
-  fdat = new Int32Array(N), owner = new Int32Array(N);
-const pm = new Uint8Array(N), pt = new Float32Array(N), pp = new Float32Array(N), ptint = new Uint32Array(N), pshade = new Uint8Array(N), paux = new Uint8Array(N);
-for (let i = 0; i < N; i++) shade[i] = (rnd() * 256) | 0;
+let mat, temp, prog, tint, shade, aux, clk, wmask, fdat, owner, pm, pt, pp, ptint, pshade, paux, MV, mvMark, pix, pixU8;
+function allocGrid() {
+  mat = new Uint8Array(N); temp = new Float32Array(N).fill(AMB); prog = new Float32Array(N); tint = new Uint32Array(N);
+  shade = new Uint8Array(N); aux = new Uint8Array(N); clk = new Uint8Array(N); wmask = new Uint8Array(N);
+  fdat = new Int32Array(N); owner = new Int32Array(N);
+  pm = new Uint8Array(N); pt = new Float32Array(N); pp = new Float32Array(N); ptint = new Uint32Array(N); pshade = new Uint8Array(N); paux = new Uint8Array(N);
+  for (let i = 0; i < N; i++) shade[i] = (rnd() * 256) | 0;
+  MV = { m: new Uint8Array(N), t: new Float32Array(N), p: new Float32Array(N), tn: new Uint32Array(N), sh: new Uint8Array(N), ax: new Uint8Array(N), ow: new Int32Array(N), idx: new Int32Array(N) };
+  mvMark = new Int32Array(N);
+  pix = new Uint8ClampedArray(N * 4); pixU8 = new Uint8Array(pix.buffer);
+}
+function setWorld(w) { W = w; N = W * H; FY = H - 10; XO = (W - 320) >> 1; allocGrid(); }
 let stamp = 1, frame = 0, fixturesDirty = true;
 const objs = new Map(); let nextObj = 1, objVersion = 0;
 const cnt = { boil: 0, steam: 0, sizzle: 0, fizz: 0, fire: 0, pop: 0 };
@@ -643,6 +656,7 @@ const DISC = [
   ['clog', 'Pipe clog', CARAMEL, 'Let candy cool inside a pipe.', 'Candy, chocolate or ice set inside a pipe. Heat it to clear.', 'kitchen'],
   ['cutout', 'Cut-out cookie', COOKIE, 'Cut rolled dough with a cookie cutter, then bake it.', 'A shape cut from rolled dough and baked.', 'bake'],
   ['decorated', 'Decorated cookie', COOKIE, 'Ice a baked cookie and let the icing set.', 'Icing set on top of a cookie.', 'bake'],
+  ['packed', 'Packed and shipped', CAKE, 'Run a finished bake into a packing crate.', 'A finished bake packed off the line.', 'kitchen'],
   ['tunnel', 'Production line', COOKIE, 'Bake something while it rides a belt.', 'Something baked on a moving conveyor belt.', 'kitchen'],
   ['takt', 'In the takt', DOUGH, 'Let a program mix something on its own.', 'A step program finished a cycle that mixed a recipe.', 'kitchen'],
 ];
@@ -1099,7 +1113,7 @@ function heatPass() {
 const nameCounter = {};
 function nextName(type) {
   const n = nameCounter[type] = (nameCounter[type] || 0) + 1;
-  const base = { disp: 'Dispenser', mixer: 'Bowl', oven: 'Oven', belt: 'Belt', gate: 'Gate', scale: 'Scale', pan: 'Pan', pipe: 'Pipe', cutter: 'Cutter', roller: 'Rolling pin' }[type];
+  const base = { disp: 'Dispenser', mixer: 'Bowl', oven: 'Oven', belt: 'Belt', gate: 'Gate', scale: 'Scale', pan: 'Pan', pipe: 'Pipe', cutter: 'Cutter', roller: 'Rolling pin', feeder: 'Tin feeder', packer: 'Crate' }[type];
   if (type === 'disp') return `${base} ${String.fromCharCode(64 + ((n - 1) % 26) + 1)}${n > 26 ? Math.ceil(n / 26) : ''}`;
   return `${base} ${n}`;
 }
@@ -1129,19 +1143,21 @@ function displace(c) {
   kill(c);
 }
 function setGate(ob, g, open) {
-  if (!g || g.open === open) return;
-  g.open = open; let blocked = false;
-  for (const c of g.cells) {
-    if (open) { if (owner[c] === ob.id && mat[c] === g.mat) { mat[c] = AIR; owner[c] = 0; } }
-    else {
-      if (owner[c] && owner[c] !== ob.id) { blocked = true; continue; }
-      if (STATE[mat[c]] === ST_STATIC && owner[c] !== ob.id) { blocked = true; continue; }
-      if (mat[c] !== AIR && STATE[mat[c]] !== ST_GAS && owner[c] !== ob.id) displace(c);
-      mat[c] = g.mat; owner[c] = ob.id; prog[c] = 0; tint[c] = 0;
-    }
+  if (!g) return;
+  if (open) { // always re-open every closed cell, whatever state we think we're in
+    g.open = true;
+    for (const c of g.cells) if (owner[c] === ob.id && mat[c] === g.mat) { mat[c] = AIR; owner[c] = 0; fixturesDirty = true; }
+    return;
   }
-  if (!open && blocked) g.open = true; // still partly open; the next close call retries
-  fixturesDirty = true;
+  if (!g.open) return;
+  let blocked = false;
+  for (const c of g.cells) {
+    if (owner[c] === ob.id) continue;
+    if (owner[c] || STATE[mat[c]] === ST_STATIC) { blocked = true; continue; } // a pan or belt is in the doorway
+    if (mat[c] !== AIR && STATE[mat[c]] !== ST_GAS) displace(c);
+    mat[c] = g.mat; owner[c] = ob.id; prog[c] = 0; tint[c] = 0; fixturesDirty = true;
+  }
+  g.open = blocked; // still partly open; the next close call retries
 }
 function gateBlocked(ob, g) { return !g.open ? false : g.cells.some(c => owner[c] && owner[c] !== ob.id); }
 
@@ -1192,7 +1208,7 @@ function createBowl(x0, y0) {
   for (const [dx, dy] of sh.cells) { const x = x0 + dx, y = y0 + dy; if (x < 0 || x >= W || y < 0 || y >= H || !freeCell(y * W + x)) return null; }
   const ob = addObj({ type: 'mixer', name: nextName('mixer'), all: [], x0, y0, mixing: false, prog: 0, key: '', info: null, gate: { cells: [], mat: GATEM, open: false } });
   for (const [dx, dy, m] of sh.cells) { const i = (y0 + dy) * W + x0 + dx; claim(ob, i, m); if (m === GATEM) ob.gate.cells.push(i); }
-  for (let y = y0 + 1; y < H; y++) { const i = y * W + x0 - 1; if (!freeCell(i)) break; claim(ob, i, METAL); } // one post, so tins slide out to the right
+  for (let y = y0 - 1; y >= 0; y--) { const i = y * W + x0 - 1; if (!freeCell(i)) break; claim(ob, i, METAL); } // hangs from an arm above, so tins pass underneath either way
   ob.box = { x0: x0 + 1, y0: y0, x1: x0 + BOWL_W - 2, y1: y0 + BOWL_H - 3 };
   ob.list = [];
   return ob;
@@ -1414,6 +1430,64 @@ function cutterCut(ob) {
 function cutterTick(ob) { if (ob.cool > 0) ob.cool--; if (ob.flash > 0) ob.flash--; if (ob.auto && ob.cool <= 0 && frame % 3 === 0 && cutterFill(ob) >= .78) cutterCut(ob); }
 function cutterRead(ob) { return `Shape filled: <b>${Math.round(cutterFill(ob) * 100)}%</b> · ${ob.cuts} cut${ob.cuts === 1 ? '' : 's'}${ob.auto ? ' · cuts on its own at 78%' : ''}`; }
 
+/* ---------- tin feeder & packing crate: what makes a line run forever ---------- */
+function feederShape() { const c = []; for (let y = 0; y < 16; y++) for (let x = 0; x < 10; x++) c.push([x, y, FEEDERM]); return { cells: c, w: 10, h: 16 }; }
+function createFeeder(x0, y0, kind) {
+  for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 10; x++) if (x < 0 || x >= W || y < 0 || y >= H || !freeCell(y * W + x)) return null;
+  const ob = addObj({ type: 'feeder', name: nextName('feeder'), all: [], x0, y0, w: 10, h: 16, kind: kind || 'cake', side: 1, auto: false, pending: false, made: 0 });
+  for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 10; x++) claim(ob, y * W + x, FEEDERM);
+  return ob;
+}
+function feederDrop(ob) { // a fresh tin appears beside the feeder, its bottom level with the feeder's
+  const sh = PAN_SHAPES[ob.kind](); let mn = 0, mx = 0; for (const [dx] of sh.c) { if (dx < mn) mn = dx; if (dx > mx) mx = dx; }
+  const x0 = ob.side > 0 ? ob.x0 + ob.w - mn : ob.x0 - 1 - mx, y0 = ob.y0 + ob.h - sh.h;
+  const p = createPan(ob.kind, x0, y0);
+  ob.pending = !p; if (p) { ob.made++; Sound.bump(.05); }
+  return !!p;
+}
+function feederTick(ob) { if ((ob.pending || ob.auto) && frame % 15 === 0) feederDrop(ob); }
+function packerShape() {
+  const c = [], w = 30, h = 16;
+  for (let y = 0; y < h; y++) { c.push([0, y, CRATE]); c.push([w - 1, y, CRATE]); }
+  for (let x = 1; x < w - 1; x++) { c.push([x, h - 1, CRATE]); c.push([x, h - 2, CRATE]); }
+  return { cells: c, w, h };
+}
+function createPacker(x0, y0) {
+  const sh = packerShape();
+  for (const [dx, dy] of sh.cells) { const x = x0 + dx, y = y0 + dy; if (x < 0 || x >= W || y < 0 || y >= H || !freeCell(y * W + x)) return null; }
+  const ob = addObj({ type: 'packer', name: nextName('packer'), all: [], x0, y0, w: sh.w, h: sh.h, tally: new Map(), total: 0, flash: 0 });
+  for (const [dx, dy, m] of sh.cells) claim(ob, (y0 + dy) * W + x0 + dx, m);
+  return ob;
+}
+function packLabel(p) {
+  const cnt = new Map(); const add = m => cnt.set(m, (cnt.get(m) || 0) + 1);
+  if (p.type === 'piece') { for (const c of p.cells) if (owner[c] === p.id) add(mat[c]); }
+  else { const b = p.bb; for (let y = Math.max(0, b.y0 - p.up); y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) { const i = y * W + x, m = mat[i]; if (m !== AIR && !owner[i] && STATE[m] !== ST_STATIC && STATE[m] !== ST_GAS) add(m); } }
+  let best = 0, bn = 0; for (const [m, n] of cnt) if (n > bn) { bn = n; best = m; }
+  if (p.type === 'piece') return best === COOKIE ? p.name : best === CHAR ? 'Burnt cookie' : 'Raw ' + p.name.toLowerCase();
+  return bn < 8 ? `Empty ${p.name.toLowerCase()}` : `${NAME[best]} (${p.name.toLowerCase()})`;
+}
+function packerTick(ob) {
+  if (ob.flash > 0) ob.flash--;
+  const ix0 = ob.x0 + 1, ix1 = ob.x0 + ob.w - 2, top = ob.y0 - 14, iy1 = ob.y0 + ob.h - 3;
+  for (const p of [...objs.values()]) {
+    if ((p.type !== 'pan' && p.type !== 'piece') || p === grabbed) continue;
+    // anything that touches the crate goes in, whether it drops in from above or is pushed against its side
+    const b = p.bb, ov = Math.min(b.x1, ob.x0 + ob.w) - Math.max(b.x0, ob.x0 - 1) + 1;
+    if (ov < 1 || b.y1 < top || b.y0 > iy1) continue;
+    const label = packLabel(p);
+    ob.tally.set(label, (ob.tally.get(label) || 0) + 1); ob.total++; ob.flash = 24;
+    for (let y = Math.max(0, b.y0 - p.up); y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) { const i = y * W + x; if (!owner[i] && mat[i] !== AIR && STATE[mat[i]] !== ST_STATIC) kill(i); }
+    removeObject(p.id); Sound.bump(.15);
+    if (!label.startsWith('Empty') && !label.startsWith('Raw')) discover(D.packed);
+  }
+  if (frame % 4 === 0) for (let y = ob.y0; y <= iy1; y++) for (let x = ix0; x <= ix1; x++) { const i = y * W + x, m = mat[i]; if (m !== AIR && !owner[i] && STATE[m] !== ST_STATIC && STATE[m] !== ST_GAS) kill(i); } // crumbs go in the crate too
+}
+function packerRead(ob) {
+  if (!ob.total) return 'Nothing packed yet. Belt finished pans or cookies into it.';
+  return `<b>${ob.total} packed</b><br>` + [...ob.tally].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} × ${k}`).join('<br>');
+}
+
 /* ---------- gates & scales ---------- */
 function createGate(cells) {
   const ok = cells.filter(c => freeCell(c)); if (!ok.length) return null;
@@ -1452,8 +1526,7 @@ function createPan(kind, x0, y0) {
   ob.all = ob.cells; ob.bb = bboxOf(ob.cells);
   return ob;
 }
-const MV = { m: new Uint8Array(N), t: new Float32Array(N), p: new Float32Array(N), tn: new Uint32Array(N), sh: new Uint8Array(N), ax: new Uint8Array(N), ow: new Int32Array(N), idx: new Int32Array(N) };
-const mvMark = new Int32Array(N); let mvId = 0;
+let mvId = 0;
 function movePan(ob, dx, dy) {
   const b = ob.bb;
   if (b.x0 + dx < 0 || b.x1 + dx >= W || b.y0 + dy < 0 || b.y1 + dy >= H) return false;
@@ -1628,6 +1701,8 @@ function fixturePass() {
     else if (ob.type === 'mixer') mixerTick(ob);
     else if (ob.type === 'oven' && ob.auto && !ob.tunnel) ovenAuto(ob);
     else if (ob.type === 'cutter') cutterTick(ob);
+    else if (ob.type === 'feeder') feederTick(ob);
+    else if (ob.type === 'packer') packerTick(ob);
   }
 }
 function drainPass() {
@@ -1645,8 +1720,8 @@ function drainPass() {
    ===================================================================== */
 const program = { steps: [2, 3, 2], cells: new Map(), running: false, loop: false, cur: 0, t: 0, made: false, wait: 0 };
 let progDirty = true;
-const ACTIONS = { disp: [['shot', 'dispense']], mixer: [['mix', 'mix'], ['drain', 'drain open']], oven: [['doorL', 'left door open'], ['doorR', 'right door open']], gate: [['open', 'open']], belt: [['run', 'run']], cutter: [['cut', 'cut']] };
-const CELL_TEXT = { mix: 'mix', drain: 'drain', doorL: 'L open', doorR: 'R open', open: 'open', cut: 'cut' };
+const ACTIONS = { disp: [['shot', 'dispense']], mixer: [['mix', 'mix'], ['drain', 'drain open']], oven: [['doorL', 'left door open'], ['doorR', 'right door open']], gate: [['open', 'open']], belt: [['run', 'run']], cutter: [['cut', 'cut']], feeder: [['drop', 'drop a tin']] };
+const CELL_TEXT = { mix: 'mix', drain: 'drain', doorL: 'L open', doorR: 'R open', open: 'open', cut: 'cut', drop: 'drop' };
 function programRows() {
   const rows = [];
   for (const ob of objs.values()) { const acts = ACTIONS[ob.type]; if (!acts) continue; if (ob.type === 'oven' && ob.tunnel) continue; for (const [a, label] of acts) rows.push({ ob, a, label }); }
@@ -1663,15 +1738,15 @@ function programTick() {
   if (!program.running) return;
   const dt = 1 / 60;
   if (program.t === 0) {
-    for (const [k, set] of program.cells) { if (!set.has(program.cur)) continue; const [id, a] = k.split('|'); const ob = objs.get(+id); if (ob && a === 'shot') dispShot(ob); else if (ob && a === 'cut') { ob.cool = 0; cutterCut(ob); } }
+    for (const [k, set] of program.cells) { if (!set.has(program.cur)) continue; const [id, a] = k.split('|'); const ob = objs.get(+id); if (ob && a === 'shot') dispShot(ob); else if (ob && a === 'cut') { ob.cool = 0; cutterCut(ob); } else if (ob && a === 'drop') feederDrop(ob); }
   }
   for (const [k, set] of program.cells) {
-    if (!set.size) continue; const [id, a] = k.split('|'); if (a === 'shot' || a === 'cut') continue;
+    if (!set.size) continue; const [id, a] = k.split('|'); if (a === 'shot' || a === 'cut' || a === 'drop') continue;
     const ob = objs.get(+id); if (ob) applyAction(ob, a, set.get(program.cur));
   }
   program.t += dt;
   let busy = false;
-  for (const [k, set] of program.cells) { if (!set.has(program.cur)) continue; const [id, a] = k.split('|'); const ob = objs.get(+id); if (ob && a === 'shot' && ob.remaining > 0) busy = true; }
+  for (const [k, set] of program.cells) { if (!set.has(program.cur)) continue; const [id, a] = k.split('|'); const ob = objs.get(+id); if (ob && ((a === 'shot' && ob.remaining > 0) || (a === 'drop' && ob.pending))) busy = true; }
   const dur = program.steps[program.cur] || 1;
   if (program.t >= dur && (!busy || program.t > dur + 10)) {
     program.cur++; program.t = 0;
@@ -1830,6 +1905,7 @@ function quickAction(i) {
   if (ob) {
     if (ob.type === 'disp') { if (ob.cont) ob.cont = false; else dispShot(ob); }
     else if (ob.type === 'cutter') { ob.cool = 0; cutterCut(ob); }
+    else if (ob.type === 'feeder') feederDrop(ob);
     else if (ob.type === 'mixer') ob.mixing = !ob.mixing;
     else if (ob.type === 'oven' && !ob.tunnel) { if (ob.auto) { ob.auto = false; ob.st = 'idle'; } const g = (i % W) < ob.x0 + ob.w / 2 ? ob.gate : ob.gate2; setGate(ob, g, !g.open); }
     else if (ob.type === 'gate') setGate(ob, ob.gate, !ob.gate.open);
@@ -1871,38 +1947,40 @@ function setProg(ob, a, steps, v = true) { program.cells.set(progKey(ob, a), new
 const SCENES = {
   counter() { clearAll(); floor(); },
   bakery() {
-    clearAll(); floor();
-    const bowl = createBowl(40, FY - 42);
-    const oven = createOven(196, FY - 40, false);
-    // door-height belts: feed → (left door) → inside → (right door) → cooling. The doorways stay free for the doors.
-    const feed = createBelt(41, FY - 5, 195, FY - 5, { speed: 3, on: false });
-    createBelt(198, FY - 5, 265, FY - 5, { speed: 3, on: false });
-    createBelt(268, FY - 5, 318, FY - 5, { speed: 2, on: true });
-    for (let x = 270; x < 318; x++) setFix((FY - 3) * W + x, FREEZER, 1); // cooling plate under the out belt
-    oven.auto = true; oven.bakeTime = 20;
-    createPan('cake', 43, FY - 15);
-    const A = createDispenser(46, FY - 72, FLOUR, 0, { shot: 45 }), Bd = createDispenser(54, FY - 72, SUGAR, 0, { shot: 40 }), C = createDispenser(62, FY - 72, EGG, 0, { shot: 35 }), Dd = createDispenser(70, FY - 72, BUTTER, 0, { shot: 25 });
-    // 1 weigh out · 2 mix · 3 drain into the tin · 4 belt to the oven. The oven's Auto bake takes it from there.
-    program.steps = [2, 3.5, 2.5, 4]; program.loop = false;
+    clearAll(); floor(); const o = XO;
+    // an endless line: tin feeder → bowl → belt → oven on Auto bake → cooling → packing crate
+    const feeder = createFeeder(o + 2, FY - 21, 'cake');
+    const bowl = createBowl(o + 16, FY - 42);
+    const oven = createOven(o + 196, FY - 40, false);
+    // door-height belts; the doorways stay free for the doors
+    const feed = createBelt(o + 2, FY - 5, o + 195, FY - 5, { speed: 3, on: false });
+    createBelt(o + 198, FY - 5, o + 265, FY - 5, { speed: 3, on: false });
+    createBelt(o + 268, FY - 5, o + 286, FY - 5, { speed: 2, on: true });
+    for (let x = o + 270; x <= o + 286; x++) setFix((FY - 3) * W + x, FREEZER, 1); // cooling plate under the out belt
+    createPacker(o + 288, FY - 16);
+    oven.auto = true; oven.bakeTime = 18;
+    const A = createDispenser(o + 22, FY - 72, FLOUR, 0, { shot: 45 }), Bd = createDispenser(o + 30, FY - 72, SUGAR, 0, { shot: 40 }), C = createDispenser(o + 38, FY - 72, EGG, 0, { shot: 35 }), Dd = createDispenser(o + 46, FY - 72, BUTTER, 0, { shot: 25 });
+    // 1 new tin + weigh out · 2 mix · 3 drain into the tin · 4 belt to the oven (long enough for the oven to finish the last one)
+    program.steps = [2.5, 3.5, 2.5, 16]; program.loop = true;
+    setProg(feeder, 'drop', [0]);
     for (const d of [A, Bd, C, Dd]) setProg(d, 'shot', [0]);
     setProg(bowl, 'mix', [1]); setProg(bowl, 'drain', [2]); setProg(feed, 'run', [3], 1);
   },
   factory() {
-    clearAll(); floor();
+    clearAll(); floor(); const o = XO;
     const BY = 150;
-    // bowl → rolling pin → cutter → tunnel oven → cooling → icing → sprinkles → slide into the box
-    createOven(124, BY - 21, true);
-    const main = createBelt(8, BY, 246, BY, { speed: 1, on: true });
-    for (let x = 196; x <= 246; x++) setFix((BY + 2) * W + x, FREEZER, 2);
-    createBelt(247, BY + 1, 290, BY + 20, { speed: 2, on: true }); // slide; ends well clear of the box wall so cookies drop in
-    const bowl = createBowl(16, 70);
-    const A = createDispenser(24, 44, FLOUR, 0, { shot: 130, flow: 3 }), Bd = createDispenser(33, 44, BUTTER, 0, { shot: 80, flow: 3 }), C = createDispenser(42, 44, SUGAR, 0, { shot: 80, flow: 3 });
-    createRoller(62, BY - 39);
-    const cut = createCutter(84, BY - 16, 'heart'); cut.auto = true;
-    const ice = createDispenser(212, BY - 40, ICING, 0x1ff7ab6, { shot: 16, flow: 1 }); ice.sensor = true;
-    const spr = createDispenser(232, BY - 40, SPRINKLES, 0, { shot: 6, flow: 1 }); spr.sensor = true;
-    for (let y = 186; y < FY; y++) { setFix(y * W + 262, METAL); setFix(y * W + 318, METAL); }
-    for (let x = 263; x < 318; x++) setFix((FY - 1) * W + x, DRAIN);
+    // bowl → rolling pin → cutter → tunnel oven → cooling → icing → sprinkles → slide into the crate
+    createOven(o + 124, BY - 21, true);
+    const main = createBelt(o + 8, BY, o + 246, BY, { speed: 1, on: true });
+    for (let x = o + 196; x <= o + 246; x++) setFix((BY + 2) * W + x, FREEZER, 2);
+    createBelt(o + 247, BY + 1, o + 290, BY + 20, { speed: 2, on: true }); // slide down to the crate
+    const bowl = createBowl(o + 16, 70);
+    const A = createDispenser(o + 24, 44, FLOUR, 0, { shot: 130, flow: 3 }), Bd = createDispenser(o + 33, 44, BUTTER, 0, { shot: 80, flow: 3 }), C = createDispenser(o + 42, 44, SUGAR, 0, { shot: 80, flow: 3 });
+    createRoller(o + 62, BY - 39);
+    const cut = createCutter(o + 84, BY - 16, 'heart'); cut.auto = true;
+    const ice = createDispenser(o + 212, BY - 40, ICING, 0x1ff7ab6, { shot: 16, flow: 1 }); ice.sensor = true;
+    const spr = createDispenser(o + 232, BY - 40, SPRINKLES, 0, { shot: 6, flow: 1 }); spr.sensor = true;
+    createPacker(o + 280, FY - 16);
     // the main belt pauses while the bowl drains, so the dough lands as one tall block for the rolling pin
     program.steps = [2, 2.5, 3]; program.loop = true;
     for (const d of [A, Bd, C]) setProg(d, 'shot', [0]);
@@ -1910,12 +1988,12 @@ const SCENES = {
     program.running = true;
   },
   stove() {
-    clearAll(); floor();
-    for (let y = FY - 2; y < FY; y++) { for (let x = 40; x < 100; x++) setFix(y * W + x, BURNER, 2); for (let x = 150; x < 210; x++) setFix(y * W + x, BURNER, 2); for (let x = 240; x < 300; x++) setFix(y * W + x, FREEZER, 2); }
-    createPan('pot', 50, FY - 26);
-    createPan('tray', 156, FY - 6);
-    createPan('tray', 246, FY - 6);
-    const A = createDispenser(62, FY - 70, SUGAR, 0, { shot: 120 }), Bd = createDispenser(76, FY - 70, WATER, 0, { shot: 60 });
+    clearAll(); floor(); const o = XO;
+    for (let y = FY - 2; y < FY; y++) { for (let x = o + 40; x < o + 100; x++) setFix(y * W + x, BURNER, 2); for (let x = o + 150; x < o + 210; x++) setFix(y * W + x, BURNER, 2); for (let x = o + 240; x < o + 300; x++) setFix(y * W + x, FREEZER, 2); }
+    createPan('pot', o + 50, FY - 26);
+    createPan('tray', o + 156, FY - 6);
+    createPan('tray', o + 246, FY - 6);
+    const A = createDispenser(o + 62, FY - 70, SUGAR, 0, { shot: 120 }), Bd = createDispenser(o + 76, FY - 70, WATER, 0, { shot: 60 });
     program.steps = [3]; setProg(A, 'shot', [0]); setProg(Bd, 'shot', [0]);
   }
 };
@@ -1959,6 +2037,8 @@ function colorFn(m, T, pg, tn, sh, x, y, i) {
     }
     case DRAIN: if ((x + y) & 1) { r = 34; g = 38; bl = 48; } else { r = 16; g = 18; bl = 23; } break;
     case GATEM: if (((x + y) >> 1) & 1) { r = 240; g = 196; bl = 60; } else { r = 52; g = 50; bl = 56; } break;
+    case FEEDERM: if (x % 10 === 0 || x % 10 === 9) { r = 70; g = 76; bl = 86; } else if (y % 3 === 1) { r = 190; g = 198; bl = 206; } break; // a stack of tins behind a frame
+    case CRATE: if (x % 4 === 0) { r *= .78; g *= .78; bl *= .78; } else if (y % 5 === 0) { r *= .9; g *= .9; bl *= .9; } break;
     case SCALEM: if (y % 2 === 0) { r = 236; g = 238; bl = 241; } else { r = 160; g = 166; bl = 174; } break;
     case OVENDOOR: { if (sh > 225) { r += 40; g += 40; bl += 45; } const ob = i >= 0 && owner[i] ? objs.get(owner[i]) : null; if (ob) { const t = ovenAirTempCached(ob); if (t > 80) { const k = Math.min(.45, (t - 80) / 300); r = lerp(r, 210, k); g = lerp(g, 90, k); bl = lerp(bl, 40, k); } } break; }
     case DISP: {
@@ -2034,7 +2114,6 @@ function heatCol(T) {
 }
 
 /* ---------------- renderer ---------------- */
-const pix = new Uint8ClampedArray(N * 4);
 let heatView = false;
 function render() {
   let o = 0;
@@ -2098,7 +2177,6 @@ void main(){
   uSize = gl.getUniformLocation(glProg, 'uSize'); uGlow = gl.getUniformLocation(glProg, 'uGlow');
   gl.uniform1i(gl.getUniformLocation(glProg, 'uTex'), 0);
 }
-const pixU8 = new Uint8Array(pix.buffer);
 function draw() {
   if (gl) {
     gl.viewport(0, 0, view.width, view.height);
@@ -2125,7 +2203,7 @@ function resize() {
 
 /* ---------------- overlay: cursor, previews, machine labels ---------------- */
 let hoverObj = 0, labels = true;
-const STAMP_KEYS = ['loaf', 'cake', 'muffin', 'tray', 'pot', 'oven', 'tunnel', 'bowl', 'scale', 'roller', 'cutter'];
+const STAMP_KEYS = ['loaf', 'cake', 'muffin', 'tray', 'pot', 'oven', 'tunnel', 'bowl', 'scale', 'roller', 'cutter', 'feeder', 'packer'];
 function stampShape(key) {
   if (PAN_SHAPES[key]) { const s = PAN_SHAPES[key](); return { cells: s.c.map(([x, y]) => [x, y, METAL]), w: s.w, h: s.h }; }
   if (key === 'oven' || key === 'tunnel') return ovenShape(key === 'tunnel');
@@ -2133,6 +2211,8 @@ function stampShape(key) {
   if (key === 'scale') return scaleShape();
   if (key === 'roller') return rollerShape();
   if (key === 'cutter') return cutterShape('heart');
+  if (key === 'feeder') return feederShape();
+  if (key === 'packer') return packerShape();
   return { cells: [], w: 0, h: 0 };
 }
 const placed = [];
@@ -2155,6 +2235,8 @@ function drawLabels(sc) {
     let text = '', bx, by, acc = false;
     if (ob.type === 'disp') { const busy = ob.cont || ob.remaining > 0; text = `${ob.name.split(' ')[1]} · ${NAME[ob.m]} ${ob.remaining > 0 ? `${ob.given}/${ob.shot} g` : ob.cont ? '∞' : ob.shot + ' g'}${ob.sensor ? ' · sensor' : ''}`; bx = ob.x + .5; by = ob.y - 1; acc = busy; }
     else if (ob.type === 'mixer') { const inf = ob.info; text = `${ob.name} · ${inf ? inf.total : 0} g${ob.mixing ? ' · mixing' : ''}${ob.gate.open ? ' · draining' : ''}`; bx = ob.x0 + BOWL_W / 2; by = ob.y0 - 1; acc = ob.mixing; }
+    else if (ob.type === 'feeder') { text = `${ob.name} · ${PAN_NAMES[ob.kind]}${ob.pending ? ' · waiting' : ''}`; bx = ob.x0 + 5; by = ob.y0; }
+    else if (ob.type === 'packer') { text = `Packed ${ob.total}`; bx = ob.x0 + ob.w / 2; by = ob.y0; acc = ob.flash > 0; }
     else if (ob.type === 'cutter') { text = `${ob.name} · ${CUT_NAMES[ob.shape]}${ob.auto ? ' · auto' : ''}`; bx = ob.x0 + 7.5; by = ob.y0; acc = ob.flash > 0; }
     else if (ob.type === 'scale') { ob.g = frame % 10 === 0 || !ob.g ? weigh(ob) : ob.g; text = `${Math.max(0, ob.g - ob.tare)} g`; bx = ob.x0 + 12; by = ob.y0 + 6; }
     else if (ob.type === 'oven') { const st = ovenStatus(ob); text = `${ob.name} · ${Math.round(ovenAirTempCached(ob))}°C${st ? ' · ' + st : !ob.tunnel ? (ob.gate.open ? ' · left door open' : '') + (ob.gate2.open ? ' · right door open' : '') : ''}`; bx = ob.x0 + ob.w / 2; by = ob.y0; acc = ob.st === 'bake' && ob.auto; }
@@ -2471,13 +2553,14 @@ const KIT = {
   gate: ['Gate', GATEM, 'A wall that opens and closes. Use it as a valve or hatch.'], drain: ['Drain', DRAIN, 'Removes whatever touches it.'],
   disp: ['Dispenser', DISP, 'Drops a set number of grams of one ingredient.'], bowl: ['Mixing bowl', METAL, 'Bowl with a mixer and a drain valve. Mixes recipes by ratio.'],
   scale: ['Scale', SCALEM, 'Weighs what sits above it, in grams.'],
-  roller: ['Rolling pin', METAL, 'Mount it over a belt. Dough passing under comes out as a flat slab.'], cutter: ['Cookie cutter', METAL, 'A press that cuts circles, hearts, stars or gingerbread people from dough.'],
+  roller: ['Rolling pin', METAL, 'Mount it over a belt. Dough passing under comes out as a flat slab.'], feeder: ['Tin feeder', FEEDERM, 'Puts a fresh empty tin beside itself: on a program step, a Shift-click, or whenever the spot is free.'], packer: ['Packing crate', CRATE, 'Packs finished pans and cookies off the line and counts them.'],
+  cutter: ['Cookie cutter', METAL, 'A press that cuts circles, hearts, stars or gingerbread people from dough.'],
   burner: ['Burner', BURNER, 'A heating element. Four heat levels.'], freezer: ['Freezer plate', FREEZER, 'A cold plate. Sets chocolate and candy.'], fire: ['Fire', FIRE, 'Very hot, very brief.'],
   loaf: ['Loaf pan', METAL, 'Movable. Drag it with the Hand.'], cake: ['Cake tin', METAL, 'Movable. Drag it with the Hand.'], muffin: ['Muffin tin', METAL, 'Movable. Drag it with the Hand.'],
   tray: ['Baking tray', METAL, 'Movable. Drag it with the Hand.'], pot: ['Pot', METAL, 'Movable. For syrup and boiling.'],
   oven: ['Oven', OVENDOOR, 'Doors on both sides and Auto bake. Hand-click it for settings.'], tunnel: ['Tunnel oven', OVENWALL, 'Compact oven open at both ends for a belt.'],
 };
-const KIT_GROUPS = [['Machines', ['disp', 'bowl', 'scale', 'oven', 'tunnel', 'roller', 'cutter']], ['Build', ['belt', 'pipe', 'gate', 'drain', 'wall', 'metal']], ['Heat & cold', ['burner', 'freezer', 'fire']], ['Cookware (movable)', ['cake', 'loaf', 'muffin', 'tray', 'pot']]];
+const KIT_GROUPS = [['Machines', ['disp', 'bowl', 'scale', 'oven', 'tunnel', 'roller', 'cutter', 'feeder', 'packer']], ['Build', ['belt', 'pipe', 'gate', 'drain', 'wall', 'metal']], ['Heat & cold', ['burner', 'freezer', 'fire']], ['Cookware (movable)', ['cake', 'loaf', 'muffin', 'tray', 'pot']]];
 const TOOLS = [
   ['erase', 'Erase', 'E', '<path d="M7 20h10M5.5 14.5 13 7a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8L13 19H9.5l-4-4a.5.5 0 0 1 0-.5z"/><path d="m9 11 5 5"/>', 'Remove anything. Right-drag erases with any tool.'],
   ['spatula', 'Spatula', 'S', '<path d="M14 3h5v7l-5 1z"/><path d="M14 11 6.5 18.5a2.1 2.1 0 0 1-3-3L11 8"/>', 'Push material in the direction you drag.'],
@@ -2670,6 +2753,15 @@ function buildCfg() {
     add(el('div', { class: 'btns' }, [el('button', { class: 'btn', type: 'button', text: 'Cut now', onclick: () => { ob.cool = 0; cutterCut(ob); refreshCfg(); } })]));
     add(el('div', { class: 'read', id: 'cfgRead', html: cutterRead(ob) }));
     add(el('div', { class: 'read', html: 'Cuts a 13 × 12 shape from dough right under the press. Feed it a slab: put a rolling pin 12 cells above the belt before it.' }));
+  } else if (ob.type === 'feeder') {
+    add(field('Tin', segCtl([['Cake', 'cake'], ['Loaf', 'loaf'], ['Muffin', 'muffin'], ['Tray', 'tray']], ob.kind, v => ob.kind = v)));
+    add(field('Puts it on the', segCtl([['← Left', -1], ['Right →', 1]], ob.side, v => ob.side = v)));
+    add(field('Mode', segCtl([['On demand', false], ['Keep one ready', true]], ob.auto, v => ob.auto = v)));
+    add(el('div', { class: 'btns' }, [el('button', { class: 'btn', type: 'button', text: 'Drop a tin', onclick: () => { feederDrop(ob); refreshCfg(); } })]));
+    add(el('div', { class: 'read', id: 'cfgRead', html: `${ob.made} made${ob.pending ? ' · waiting for room' : ''}. On demand: a program step or Shift-click drops one. Keep one ready: a new tin appears whenever the spot is free.` }));
+  } else if (ob.type === 'packer') {
+    add(el('div', { class: 'read', id: 'cfgRead', html: packerRead(ob) }));
+    add(el('div', { class: 'btns' }, [el('button', { class: 'btn ghost', type: 'button', text: 'Reset count', onclick: () => { ob.tally.clear(); ob.total = 0; refreshCfg(); } })]));
   } else if (ob.type === 'roller') {
     add(el('div', { class: 'read', html: 'Dough taller than the gap under the roller is held back until it flattens into a slab. A 12-cell gap matches the cookie cutter.' }));
   } else if (ob.type === 'pipe') {
@@ -2691,6 +2783,7 @@ function updateCfgLive() {
   else if (cfgOb.type === 'oven') r.innerHTML = ovenRead(cfgOb);
   else if (cfgOb.type === 'scale') r.textContent = `${Math.max(0, weigh(cfgOb) - cfgOb.tare)} g`;
   else if (cfgOb.type === 'cutter') r.innerHTML = cutterRead(cfgOb);
+  else if (cfgOb.type === 'packer') r.innerHTML = packerRead(cfgOb);
 }
 function positionCfg() {
   cfgEl.hidden = false;
@@ -2801,6 +2894,8 @@ function updateTip() {
     else if (ob.type === 'gate') { mt = ob.gate.open ? 'open' : 'closed'; hh = 'Shift-click to open or close.'; }
     else if (ob.type === 'scale') { mt = `${Math.max(0, weigh(ob) - ob.tare)} g`; hh = 'Shift-click to tare.'; }
     else if (ob.type === 'cutter') { mt = `${CUT_NAMES[ob.shape]} · ${ob.auto ? 'auto' : 'manual'} · ${Math.round(cutterFill(ob) * 100)}% filled`; hh = 'Shift-click to cut. Hand-click for shape and mode.'; }
+    else if (ob.type === 'feeder') { mt = `${PAN_NAMES[ob.kind]} · ${ob.auto ? 'keeps one ready' : 'on demand'} · ${ob.made} made`; hh = 'Shift-click to drop a tin. Hand-click for settings.'; }
+    else if (ob.type === 'packer') { mt = `${ob.total} packed`; hh = 'Hand-click to see what was packed.'; }
     else if (ob.type === 'roller') { mt = 'flattens dough to the gap below it'; hh = 'Set it 12 cells above a belt to feed a cookie cutter.'; }
   } else if (ob && (ob.type === 'pan' || ob.type === 'piece')) { t = ob.name; if (ob.type === 'piece' && owner[i] === ob.id) { const sl = stateLine(i, m); mt = deg(temp[i]) + (sl ? ' · ' + sl : ''); } else mt = deg(temp[ob.cells[0]]); hh = 'Drag with the Hand or Shift+drag.'; }
   else if (m === AIR) { if (temp[i] > 40 || temp[i] < 10) { t = 'Air'; mt = deg(temp[i]); } else { const p = panAt(i); if (p) { t = p.name; hh = 'Drag with the Hand or Shift+drag.'; } } }
@@ -2839,7 +2934,7 @@ view.addEventListener('pointerdown', e => {
     if (k === 'disp') { made = createDispenser(x, y, lastIng, (TINTABLE[lastIng] || lastIng === COLORING) ? paintTint : 0); fail = !made; if (made) openCfg(made); }
     else if (STAMP_KEYS.includes(k)) {
       const st = stampShape(k), x0 = x - (st.w >> 1), y0 = y - (st.h >> 1);
-      made = PAN_SHAPES[k] ? createPan(k, x0, y0) : k === 'bowl' ? createBowl(x0, y0) : k === 'scale' ? createScale(x0, y0) : k === 'roller' ? createRoller(x0, y0) : k === 'cutter' ? createCutter(x0, y0, 'heart') : createOven(x0, y0, k === 'tunnel');
+      made = PAN_SHAPES[k] ? createPan(k, x0, y0) : k === 'bowl' ? createBowl(x0, y0) : k === 'scale' ? createScale(x0, y0) : k === 'roller' ? createRoller(x0, y0) : k === 'cutter' ? createCutter(x0, y0, 'heart') : k === 'feeder' ? createFeeder(x0, y0, 'cake') : k === 'packer' ? createPacker(x0, y0) : createOven(x0, y0, k === 'tunnel');
       fail = !made;
     }
     else if (k === 'pipe' && i >= 0) mouse.path = [i];
@@ -2895,6 +2990,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'h') toggleHeat();
   else if (k === 'b') openBook();
   else if (k === 'p') toggleProg();
+  else if (k === 'f') toggleFullscreen();
   else if (k === '[') setBrush(brush - 1);
   else if (k === ']') setBrush(brush + 1);
   else if (/^[1-9]$/.test(k)) { const it = visibleItems[+k - 1]; if (it) select(it); }
@@ -2955,9 +3051,33 @@ function dismissWelcome() { welcome.hidden = true; store.set('welcomed', true); 
 document.getElementById('wGo').addEventListener('click', () => { dismissWelcome(); if (progEl.hidden) toggleProg(); });
 document.getElementById('wLine').addEventListener('click', () => { dismissWelcome(); loadScene('factory'); if (progEl.hidden) toggleProg(); });
 
+/* ---------------- kitchen size ---------------- */
+function fitWidth() { const r = stageEl.getBoundingClientRect(); return r.height > 50 ? clamp(Math.round(H * r.width / r.height), 320, 480) : 320; }
+function fitToWindow() { // rebuilds the world at the window's shape and reloads the current scene
+  const w = fitWidth(); if (w === W) { toast('Kitchen', 'Already fits', 'The kitchen already matches this window.', kitSw('wall')); return; }
+  setWorld(w); ovenTempCache.clear(); beltCacheV = -1;
+  if (gl) { gl.bindTexture(gl.TEXTURE_2D, glTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); } else fallback2d();
+  loadScene(currentScene); resize();
+}
+document.getElementById('fitBtn').addEventListener('click', () => { closePops(); fitToWindow(); });
+const fsBtn = document.getElementById('fsBtn');
+function toggleFullscreen() {
+  const d = document;
+  if (d.fullscreenElement) { d.exitFullscreen && d.exitFullscreen().catch(() => { }); return; }
+  const r = d.documentElement.requestFullscreen && d.documentElement.requestFullscreen();
+  if (r && r.catch) r.catch(() => toast('Fullscreen', 'Not available here', 'This browser view blocks fullscreen. Try opening the page in its own tab.', kitSw('wall')));
+}
+fsBtn.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  fsBtn.classList.toggle('on', !!document.fullscreenElement);
+  setTimeout(() => { if (fitWidth() !== W) toast('Bigger screen', 'Fill the screen?', 'Kitchen menu → Fit kitchen to window makes the kitchen wider. It restarts the scene.', kitSw('wall')); }, 400);
+});
+
 /* ---------------- boot ---------------- */
 (store.get('found', []) || []).forEach(k => { if (D[k] !== undefined && !found[D[k]]) { found[D[k]] = 1; foundCount++; } });
 updateBookCount();
+if (progEl.hidden) toggleProg(); // the program sits under the kitchen; size the kitchen with it in place
+setWorld(fitWidth());
 initGL();
 buildTools();
 searchEl.placeholder = 'Search ingredients';
@@ -2965,7 +3085,9 @@ buildPalette();
 select({ kind: 'mat', id: FLOUR });
 setBrush(5);
 loadScene('bakery');
-if (!store.get('welcomed', false)) welcome.hidden = false; else toggleProg();
+buildProgram(); // the program table sets how much room is left for the kitchen
+if (fitWidth() !== W) fitToWindow();
+if (!store.get('welcomed', false)) welcome.hidden = false;
 resize();
 new ResizeObserver(resize).observe(stageEl);
 let lastT = performance.now(), acc = 0;
@@ -2981,7 +3103,8 @@ function loop(now) {
   Sound.tick(paused);
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
+// the first measurement can come before the layout settles: fit once more on the first frame, before anything has run
+requestAnimationFrame(() => { if (frame === 0 && fitWidth() !== W) fitToWindow(); requestAnimationFrame(loop); });
 </script>
 </body>
 </html>

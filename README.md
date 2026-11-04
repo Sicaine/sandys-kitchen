@@ -11,7 +11,10 @@ Every grain has a temperature, and recipes are real ratios by weight (1 grain = 
 - Cook syrup through the candy stages: fudge, caramel, hard candy.
 - Build lines with belts at any angle, pipes, gates, rolling pins and cookie cutters.
 - Automate everything with the step program.
-- Collect 42 entries in the recipe book.
+- Run it forever: a tin feeder supplies empty tins and a packing crate takes finished bakes off the line and counts them.
+- Collect 43 entries in the recipe book.
+
+The kitchen grows to fit your window (Kitchen menu → Fit kitchen to window after resizing), and there is a fullscreen button.
 
 Built for a desktop browser with a mouse.
 
