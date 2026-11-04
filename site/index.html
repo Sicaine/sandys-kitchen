@@ -1351,7 +1351,8 @@ function beltPass() {
         if ((mt === AIR || STATE[mt] === ST_GAS) && !owner[t]) {
           if (BAKED[m] && temp[c] > 100 && !found[D.tunnel]) discover(D.tunnel);
           swap(c, t);
-        }
+        } else break; // this grain is stuck, so whatever rests on it stays put too
+
       }
     }
     for (const [p, [sx, sy]] of pans) if (p !== grabbed) { if (!movePan(p, sx, sy) && sy) movePan(p, sx, Math.min(0, sy)); }
@@ -1812,11 +1813,12 @@ function floodSame(i, fn) {
     for (const j of [c - W, c + W, x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1]) if (j >= 0 && j < N && !seen.has(j) && mat[j] === m && !owner[j]) { seen.add(j); st.push(j); }
   }
 }
-function objAt(i) {
+function objAt(i, wide) { // wide: clicks also hit the empty inside of an oven
   if (i < 0) return null;
   if (owner[i]) return objs.get(owner[i]) || null;
   const x = i % W, y = (i / W) | 0;
   for (const ob of objs.values()) { // open doors and drains still belong to their machine
+    if (ob.type === 'oven' && (wide || mat[i] === AIR) && x >= ob.x0 && x < ob.x0 + ob.w && y >= ob.y0 && y < ob.y0 + ob.h) return ob;
     if ((ob.type === 'oven' || ob.type === 'mixer' || ob.type === 'gate') && ob.gate.open && ob.gate.cells.includes(i)) return ob;
     if (ob.type === 'oven' && ob.gate2 && ob.gate2.open && ob.gate2.cells.includes(i)) return ob;
     if (ob.type === 'mixer') { const b = ob.box; if (x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1) return ob; }
@@ -1824,7 +1826,7 @@ function objAt(i) {
   return null;
 }
 function quickAction(i) {
-  const ob = objAt(i);
+  const ob = objAt(i, true);
   if (ob) {
     if (ob.type === 'disp') { if (ob.cont) ob.cont = false; else dispShot(ob); }
     else if (ob.type === 'cutter') { ob.cool = 0; cutterCut(ob); }
@@ -2641,14 +2643,14 @@ function buildCfg() {
     add(field('Heat', segCtl([['Off', 0], ['Low', 1], ['Med', 2], ['High', 3]], ob.level, v => setOvenLevel(ob, v))));
     if (!ob.tunnel) {
       add(field('Auto bake', segCtl([['Off', false], ['On', true]], ob.auto, v => { ob.auto = v; ob.st = 'idle'; ob.t = 0; })));
+      const manual = (g) => v => { if (ob.auto) { ob.auto = false; ob.st = 'idle'; } setGate(ob, g, v); };
+      add(field('Left door', segCtl([['Closed', false], ['Open', true]], ob.gate.open, manual(ob.gate))));
+      add(field('Right door', segCtl([['Closed', false], ['Open', true]], ob.gate2.open, manual(ob.gate2))));
       if (ob.auto) {
         const rng = el('input', { type: 'range', id: 'cfgBake', min: 5, max: 90, step: 5, value: ob.bakeTime, 'aria-label': 'Bake time in seconds' });
         rng.addEventListener('input', e => { ob.bakeTime = +e.target.value; cfgEl.querySelector('#bakeOut').textContent = ob.bakeTime + ' s'; });
         const f = field('Bake time', rng); f.querySelector('.l').appendChild(el('output', { id: 'bakeOut', text: ob.bakeTime + ' s' })); add(f);
-        add(el('div', { class: 'read', html: 'Opens the door a tin comes toward, lets the belt inside pull it in, shuts both doors and bakes. Then it opens the far door and runs the belt to send it out.' }));
-      } else {
-        add(field('Left door', segCtl([['Closed', false], ['Open', true]], ob.gate.open, v => setGate(ob, ob.gate, v))));
-        add(field('Right door', segCtl([['Closed', false], ['Open', true]], ob.gate2.open, v => setGate(ob, ob.gate2, v))));
+        add(el('div', { class: 'read', html: 'Auto bake runs the doors: it opens the one a tin comes toward, lets the belt inside pull it in, shuts both and bakes, then opens the far door and runs the belt to send it out. Using a door switch turns Auto bake off.' }));
       }
     }
     add(el('div', { class: 'read', id: 'cfgRead', html: ovenRead(ob) }));
@@ -2824,7 +2826,7 @@ view.addEventListener('pointerdown', e => {
     const pan = panAt(i);
     if (pan) { grabbed = pan; pan.gx = mouse.cx - pan.bb.x0; pan.gy = mouse.cy - pan.bb.y0; pan.tx = pan.bb.x0; pan.ty = pan.bb.y0; view.classList.add('grabbing'); closeCfg(); return; }
     if (e.shiftKey) { quickAction(i); return; }
-    const ob = objAt(i);
+    const ob = objAt(i, true);
     if (ob) openCfg(ob);
     else if (i >= 0 && (mat[i] === BURNER || mat[i] === FREEZER)) openCfg({ type: 'group', cell: i, name: mat[i] === BURNER ? 'Burner' : 'Freezer plate' });
     else closeCfg();
