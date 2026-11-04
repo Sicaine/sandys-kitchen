@@ -13,6 +13,7 @@ Every grain has a temperature, and recipes are real ratios by weight (1 grain = 
 - Automate everything with the step program.
 - Run it forever: a tin feeder supplies empty tins and a packing crate takes finished bakes off the line and counts them.
 - Collect 43 entries in the recipe book.
+- Pick a backdrop: slate, subway or pistachio tiles, strawberry wallpaper, wood paneling, a night window, diner checker or plain dark.
 
 The kitchen grows to fit your window (Kitchen menu → Fit kitchen to window after resizing), and there is a fullscreen button.
 

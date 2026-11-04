@@ -73,6 +73,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .pop button.row:hover{background:rgba(255,255,255,.08)}
 .pop button.row small{opacity:.6;font-size:12px}
 .pop .sep{height:1px;background:var(--hud-line);margin:4px 6px}
+.pop h4 span{text-transform:none;letter-spacing:0;font-size:12px;opacity:1}
+.bgs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:4px 8px 6px}
+.bgs button{height:30px;border-radius:7px;border:2px solid rgba(255,255,255,.14);padding:0;background-size:cover;image-rendering:pixelated}
+.bgs button:hover{border-color:rgba(255,255,255,.4)}
+.bgs button.on{border-color:var(--hud-accent);box-shadow:0 0 0 1px var(--hud-accent)}
 .srow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:6px 8px}
 .srow label{font-size:14px}
 .srow input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--hud-accent)}
@@ -240,12 +245,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         <button class="hb" id="menuBtn" aria-haspopup="true" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="lbl">Kitchen</span>
         </button>
-        <div class="pop left" id="menu" hidden>
+        <div class="pop left" id="menu" hidden style="min-width:290px">
           <h4>Scenes</h4>
           <button class="row" data-scene="bakery">Home bakery <small>endless cake loop</small></button>
           <button class="row" data-scene="factory">Cookie factory <small>roll, cut, bake, ice</small></button>
           <button class="row" data-scene="stove">Candy stove <small>pot, tray, cooling plate</small></button>
           <button class="row" data-scene="counter">Empty counter <small>build your own</small></button>
+          <div class="sep"></div>
+          <h4>Backdrop · <span id="bgName">Slate tiles</span></h4>
+          <div class="bgs" id="bgList" role="group" aria-label="Backdrop"></div>
           <div class="sep"></div>
           <button class="row" id="clearBtn">Clear ingredients <small>keeps machines</small></button>
           <button class="row" id="inspBtn">Labels &amp; inspector <small id="inspState">on</small></button>
@@ -502,7 +510,7 @@ function allocGrid() {
   mvMark = new Int32Array(N);
   pix = new Uint8ClampedArray(N * 4); pixU8 = new Uint8Array(pix.buffer);
 }
-function setWorld(w) { W = w; N = W * H; FY = H - 10; XO = (W - 320) >> 1; allocGrid(); }
+function setWorld(w) { W = w; N = W * H; FY = H - 10; XO = (W - 320) >> 1; allocGrid(); buildBackdrop(); }
 let stamp = 1, frame = 0, fixturesDirty = true;
 const objs = new Map(); let nextObj = 1, objVersion = 0;
 const cnt = { boil: 0, steam: 0, sizzle: 0, fizz: 0, fire: 0, pop: 0 };
@@ -2002,7 +2010,28 @@ function loadScene(k) { currentScene = k; SCENES[k](); rebuildLists(); progDirty
 
 /* ---------------- colours ---------------- */
 let CR = 0, CG = 0, CB = 0, CE = 0;
-const AIRC = BASE[AIR];
+/* ---------------- backdrops: drawn once into a per-cell buffer when chosen ---------------- */
+const hash2 = (x, y) => ((Math.imul(x, 374761393) ^ Math.imul(y, 668265263)) >>> 0) % 251;
+const BACKDROPS = {
+  slate: { name: 'Slate tiles', mist: [228, 237, 242], px(x, y) { const gx = x & 15, gy = y & 15, f = (gx === 0 || gy === 0) ? .86 : (gx === 1 || gy === 1) ? 1.07 : 1; return [43 * f, 51 * f, 70 * f]; } },
+  subway: { name: 'Subway tiles', light: true, mist: [140, 160, 182], px(x, y) { const row = (y / 5) | 0, gx = (x + (row & 1) * 5) % 10, gy = y % 5; if (gx === 0 || gy === 0) return [190, 196, 202]; const n = (hash2(x >> 1, y >> 1) & 7) - 3, f = gy === 1 ? 1.03 : 1; return [222 * f + n, 227 * f + n, 231 * f + n]; } },
+  pistachio: { name: 'Pistachio tiles', mist: [236, 246, 240], px(x, y) { const gx = x % 12, gy = y % 12; if (gx === 0 || gy === 0) return [206, 222, 206]; const f = (gx === 1 || gy === 1) ? 1.06 : 1; return [118 * f, 160 * f, 132 * f]; } },
+  wallpaper: { name: 'Strawberry wallpaper', light: true, mist: [160, 140, 160], px(x, y) { const s = x % 12; if (y % 60 < 2) return [196, 150, 162]; if (s < 6) return [232, 184, 196]; return (s === 9 && (y + ((x / 12) | 0) * 7) % 10 === 0) ? [214, 92, 128] : [246, 230, 233]; } },
+  wood: { name: 'Wood paneling', mist: [232, 234, 238], px(x, y) { const p = (x / 9) | 0, s = x % 9; if (s === 0) return [58, 38, 26]; const b = (p & 1) ? [112, 76, 50] : [126, 86, 57], gr = ((y * 3 + p * 17 + ((s * s) >> 1)) % 23) === 0 ? .82 : 1, n = (hash2(x, y >> 2) & 7) - 3; return [b[0] * gr + n, b[1] * gr + n, b[2] * gr + n]; } },
+  night: { name: 'Night window', mist: [205, 214, 235], px(x, y) { const t = y / H, h = hash2(x, y), sky = y < H * .72 && hash2(x * 7 + 3, y * 13 + 1) % 4 === 0; if (sky && h === 250) return [240, 236, 214]; if (sky && h >= 248) return [112, 118, 148]; return [16 + 22 * t, 20 + 18 * t, 46 + 20 * t]; } },
+  checker: { name: 'Diner checker', mist: [226, 233, 240], px(x, y) { return (((x >> 3) + (y >> 3)) & 1) ? [70, 72, 82] : [50, 52, 60]; } },
+  plain: { name: 'Plain dark', mist: [226, 233, 240], px() { return [30, 31, 36]; } },
+};
+let bgKey = 'slate', BGR = null, BGG = null, BGB = null, AIRC = BASE[AIR], MIST = [228, 237, 242], SMK = [104, 100, 106];
+function buildBackdrop() {
+  const t = BACKDROPS[bgKey] || BACKDROPS.slate;
+  BGR = new Uint8Array(N); BGG = new Uint8Array(N); BGB = new Uint8Array(N);
+  let sr = 0, sg = 0, sb = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const c = t.px(x, y), i = y * W + x; BGR[i] = clamp(c[0], 0, 255); BGG[i] = clamp(c[1], 0, 255); BGB[i] = clamp(c[2], 0, 255); sr += BGR[i]; sg += BGG[i]; sb += BGB[i]; }
+  AIRC = [sr / N, sg / N, sb / N]; MIST = t.mist; SMK = t.light ? [84, 82, 90] : [104, 100, 106];
+}
+let BR = 0, BGc = 0, BB = 0; // the backdrop behind the cell being coloured: glass, steam and smoke are see-through
+function bgAt(x, y) { if (BGR && x >= 0 && x < W && y >= 0 && y < H) { const i = y * W + x; BR = BGR[i]; BGc = BGG[i]; BB = BGB[i]; } else { BR = AIRC[0]; BGc = AIRC[1]; BB = AIRC[2]; } }
 const COOKS = {
   [BREAD]: ['#f0d8a4', '#dca457', '#a8662f', '#5c3519'], [CAKE]: ['#f6da8e', '#e0a84f', '#a9672e', '#5c3519'],
   [COOKIE]: ['#e6b768', '#cf8f45', '#9a5c2a', '#55311a'], [BMERINGUE]: ['#fff6e3', '#f2d49c', '#c98d4f', '#6b4223'],
@@ -2017,8 +2046,7 @@ function colorFn(m, T, pg, tn, sh, x, y, i) {
   let r = b[0] * f, g = b[1] * f, bl = b[2] * f, e = 0;
   switch (m) {
     case AIR: {
-      const gx = x & 15, gy = y & 15; let ff = 1; if (gx === 0 || gy === 0) ff = .86; else if (gx === 1 || gy === 1) ff = 1.07;
-      r = AIRC[0] * ff; g = AIRC[1] * ff; bl = AIRC[2] * ff;
+      bgAt(x, y); r = BR; g = BGc; bl = BB;
       if (T > 55) { const k = Math.min(.38, (T - 55) / 360); r = lerp(r, 150, k); g = lerp(g, 64, k); bl = lerp(bl, 40, k); }
       else if (T < 8) { const k = Math.min(.45, (8 - T) / 45); r = lerp(r, 110, k); g = lerp(g, 170, k); bl = lerp(bl, 205, k); }
       break;
@@ -2049,9 +2077,9 @@ function colorFn(m, T, pg, tn, sh, x, y, i) {
       }
       break;
     }
-    case GLASS: r = lerp(AIRC[0], 205, .3); g = lerp(AIRC[1], 238, .3); bl = lerp(AIRC[2], 247, .3); if (sh > 200) { r += 14; g += 14; bl += 14; } break;
+    case GLASS: bgAt(x, y); r = lerp(BR, 205, .3); g = lerp(BGc, 238, .3); bl = lerp(BB, 247, .3); if (sh > 200) { r += 14; g += 14; bl += 14; } break;
     case PIPE: {
-      r = lerp(AIRC[0], 205, .13); g = lerp(AIRC[1], 238, .13); bl = lerp(AIRC[2], 247, .13);
+      bgAt(x, y); r = lerp(BR, 205, .13); g = lerp(BGc, 238, .13); bl = lerp(BB, 247, .13);
       if (i >= 0 && fdat[i]) { const c = fdat[i] === 2 ? [214, 168, 82] : [199, 122, 74]; r = c[0]; g = c[1]; bl = c[2]; }
       break;
     }
@@ -2060,7 +2088,7 @@ function colorFn(m, T, pg, tn, sh, x, y, i) {
     case MINT: if (sh < 70) { r = 222; g = 62; bl = 74; } break;
     case COLORING: { const t = tn || 0x1e8325a; r = (t >> 16) & 255; g = (t >> 8) & 255; bl = t & 255; tn = 0; break; }
     case SODA: if (((sh + frame * 3) & 255) < 5) { r = 176; g = 120; bl = 82; } break;
-    case EGG: if (sh < 80) { r = 246; g = 180; bl = 52; } else { r = lerp(248, AIRC[0], .08); g = lerp(242, AIRC[1], .08); bl = lerp(228, AIRC[2], .08); } break;
+    case EGG: if (sh < 80) { r = 246; g = 180; bl = 52; } else { bgAt(x, y); r = lerp(248, BR, .08); g = lerp(242, BGc, .08); bl = lerp(228, BB, .08); } break;
     case CEGG: if (sh < 80) { r = 242; g = 166; bl = 44; } else { cookCol(COOKS[CEGG], pg); r = CR; g = CG; bl = CB; } break;
     case SYRUP: {
       const p = pg; let a = SYR[0][1], c = SYR[0][1], t = 0;
@@ -2080,10 +2108,10 @@ function colorFn(m, T, pg, tn, sh, x, y, i) {
       break;
     case SCARAMEL: if (sh > 236) { r = g = bl = 248; } break;
     case GUMMY: case HCANDY: case ICE: if (sh > 228) { r = lerp(r, 255, .45); g = lerp(g, 255, .45); bl = lerp(bl, 255, .45); } break;
-    case FOAM: if (pg < 140) { const k = 1 - pg / 140; r = lerp(r, AIRC[0], k); g = lerp(g, AIRC[1], k); bl = lerp(bl, AIRC[2], k); } break;
-    case STEAM: { const k = .14 + .26 * Math.min(1, pg / 200); r = lerp(AIRC[0], 228, k); g = lerp(AIRC[1], 237, k); bl = lerp(AIRC[2], 242, k); break; }
-    case SMOKE: { const k = .3 + .35 * Math.min(1, pg / 120); r = lerp(AIRC[0], 104, k); g = lerp(AIRC[1], 100, k); bl = lerp(AIRC[2], 106, k); break; }
-    case DUST: r = lerp(AIRC[0], 239, .42); g = lerp(AIRC[1], 229, .42); bl = lerp(AIRC[2], 211, .42); break;
+    case FOAM: if (pg < 140) { const k = 1 - pg / 140; bgAt(x, y); r = lerp(r, BR, k); g = lerp(g, BGc, k); bl = lerp(bl, BB, k); } break;
+    case STEAM: { const k = .14 + .26 * Math.min(1, pg / 200); bgAt(x, y); r = lerp(BR, MIST[0], k); g = lerp(BGc, MIST[1], k); bl = lerp(BB, MIST[2], k); break; }
+    case SMOKE: { const k = .3 + .35 * Math.min(1, pg / 120); bgAt(x, y); r = lerp(BR, SMK[0], k); g = lerp(BGc, SMK[1], k); bl = lerp(BB, SMK[2], k); break; }
+    case DUST: bgAt(x, y); r = lerp(BR, 239, .42); g = lerp(BGc, 229, .42); bl = lerp(BB, 211, .42); break;
     case FIRE: {
       const k = Math.min(1, pg / 40); const fl = ((sh + frame * 7) & 63) / 63;
       if (k > .55) { r = 255; g = lerp(150, 236, fl); bl = lerp(50, 150, fl * k); } else if (k > .25) { r = 255; g = lerp(100, 160, fl); bl = 30; } else { r = lerp(190, 230, fl); g = 60; bl = 30; }
@@ -3051,6 +3079,24 @@ function dismissWelcome() { welcome.hidden = true; store.set('welcomed', true); 
 document.getElementById('wGo').addEventListener('click', () => { dismissWelcome(); if (progEl.hidden) toggleProg(); });
 document.getElementById('wLine').addEventListener('click', () => { dismissWelcome(); loadScene('factory'); if (progEl.hidden) toggleProg(); });
 
+/* ---------------- backdrop picker ---------------- */
+const bgList = document.getElementById('bgList'), bgName = document.getElementById('bgName');
+function backdropPreview(t) { // 48 × 24 cells of the pattern; CSS scales it up crisply
+  const c = document.createElement('canvas'); c.width = 48; c.height = 24; const x2 = c.getContext('2d'), im = x2.createImageData(48, 24);
+  for (let y = 0; y < 24; y++) for (let x = 0; x < 48; x++) { const p = t.px(x, y + 60), o = (y * 48 + x) * 4; im.data[o] = p[0]; im.data[o + 1] = p[1]; im.data[o + 2] = p[2]; im.data[o + 3] = 255; }
+  x2.putImageData(im, 0, 0); return c.toDataURL();
+}
+function buildBgList() {
+  bgList.innerHTML = '';
+  for (const [k, t] of Object.entries(BACKDROPS)) {
+    const b = document.createElement('button'); b.type = 'button'; b.title = t.name + (t.light ? ' (light: white ingredients show less)' : ''); b.setAttribute('aria-label', t.name);
+    b.style.backgroundImage = `url(${backdropPreview(t)})`; b.classList.toggle('on', k === bgKey); b.setAttribute('aria-pressed', String(k === bgKey));
+    b.addEventListener('click', () => { bgKey = k; store.set('bg', k); buildBackdrop(); buildBgList(); });
+    bgList.appendChild(b);
+  }
+  bgName.textContent = BACKDROPS[bgKey].name;
+}
+
 /* ---------------- kitchen size ---------------- */
 function fitWidth() { const r = stageEl.getBoundingClientRect(); return r.height > 50 ? clamp(Math.round(H * r.width / r.height), 320, 480) : 320; }
 function fitToWindow() { // rebuilds the world at the window's shape and reloads the current scene
@@ -3077,7 +3123,9 @@ document.addEventListener('fullscreenchange', () => {
 (store.get('found', []) || []).forEach(k => { if (D[k] !== undefined && !found[D[k]]) { found[D[k]] = 1; foundCount++; } });
 updateBookCount();
 if (progEl.hidden) toggleProg(); // the program sits under the kitchen; size the kitchen with it in place
+bgKey = BACKDROPS[store.get('bg', 'slate')] ? store.get('bg', 'slate') : 'slate';
 setWorld(fitWidth());
+buildBgList();
 initGL();
 buildTools();
 searchEl.placeholder = 'Search ingredients';
